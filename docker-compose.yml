@@ -3,6 +3,7 @@ version: '2.4'
 x-web-defaults: &web-defaults
   restart: unless-stopped
   build:
+    dockerfile: Dockerfile.base
     context: web
   volumes:
     - ./web:/app
@@ -40,11 +41,13 @@ services:
     restart: unless-stopped
     build:
       context: ml_api
+      dockerfile: Dockerfile.aarch64
     environment:
         DEBUG: 'True'
         FLASK_APP: 'server.py'
         # ML_API_TOKEN:
-        # HAS_GPU: 'False'
+        HAS_GPU: 'True'
+    runtime: nvidia
     command: bash -c "gunicorn --bind 0.0.0.0:3333 --workers 2 wsgi"
 
   web:
