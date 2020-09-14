@@ -2,22 +2,28 @@ import os
 from binascii import hexlify
 import tempfile
 import re
+import time
+import json
 from django.shortcuts import render, redirect
 from django.views import View
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect
 from django.contrib import messages
 from django.urls import reverse
 from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.http import Http404
+from django.utils import timezone
 from django.utils.safestring import mark_safe
+from django.views.decorators.csrf import csrf_exempt
 
-from .view_helpers import *
-from .models import *
-from .forms import *
+from .view_helpers import get_print_or_404, get_printer_or_404, get_paginator
+from .models import (User, Printer, SharedResource, PublicTimelapse, GCodeFile)
+
+from .forms import PrinterForm, UserPreferencesForm
 from lib import redis
-from .telegram_bot import bot_name, telegram_bot, LOGGER
+from lib import channels
+from lib.integrations.telegram_bot import bot_name, telegram_bot
 from lib.file_storage import save_file_obj
 from app.tasks import preprocess_timelapse
 
@@ -50,12 +56,7 @@ def printers(request):
     if not request.user.consented_at:
         return redirect('/consent/')
 
-    printers = request.user.printer_set.order_by('-created_at').all()
-
-    if Printer.with_archived.filter(user=request.user, archived_at__isnull=False).count() > 0:
-        messages.warning(request, mark_safe('Some of your printers have been archived. <a href="/ent/printers/archived/">Find them here.</a>'))
-
-    return render(request, 'printer_list.html', {'printers': printers})
+    return render(request, 'printers.html')
 
 
 @login_required
@@ -89,7 +90,9 @@ def edit_printer(request, pk):
 
 @login_required
 def delete_printer(request, pk=None):
-    get_printer_or_404(pk, request).delete()
+    printer = get_printer_or_404(pk, request)
+    printer.delete()
+    messages.success(request, f'{printer.name} has been deleted!')
 
     return redirect('/printers/')
 
@@ -128,7 +131,7 @@ def share_printer(request, pk):
                 SharedResource.objects.create(printer=printer, share_token=hexlify(os.urandom(18)).decode())
         else:
             SharedResource.objects.filter(printer=printer).delete()
-            messages.success(request, 'You have disabled printer feed sharing. Previous share link has now been revoked.')
+            messages.success(request, 'You have disabled printer feed sharing. Previous shareable link has now been revoked.')
 
     return render(request, 'share_printer.html', dict(printer=printer, user=request.user))
 
@@ -136,7 +139,7 @@ def share_printer(request, pk):
 def printer_shared(request, share_token=None):
     printer = get_object_or_404(Printer, sharedresource__share_token=share_token, user__is_pro=True)
 
-    return render(request, 'printer_shared.html', {'printer': printer, 'share_token': share_token})
+    return render(request, 'printer_shared.html', {'share_token': share_token})
 
 
 @login_required
@@ -198,20 +201,6 @@ def unsubscribe_email(request):
 
 ### Prints and public time lapse ###
 
-
-# TODO: Remove this after switching to Vue
-# @login_required
-# def prints(request):
-#     prints = get_prints(request).filter(video_url__isnull=False).order_by('-id')
-
-#     if request.GET.get('deleted', False):
-#         prints = prints.all(force_visibility=True)
-#     page_obj = get_paginator(prints, request, 9)
-#     prediction_urls = [dict(print_id=print.id, prediction_json_url=print.prediction_json_url) for print in page_obj.object_list]
-
-#     return render(request, 'print_list.html', dict(prints=page_obj.object_list, page_obj=page_obj, prediction_urls=prediction_urls))
-
-
 @login_required
 def prints(request):
     return render(request, 'prints.html')
@@ -221,20 +210,6 @@ def prints(request):
 def print(request, pk):
     _print = get_print_or_404(pk, request)
     return render(request, 'print.html', {'object': _print})
-
-
-# TODO: remove after /prints/ switched to Vue
-@login_required
-def delete_prints(request, pk):
-    if request.method == 'POST':
-        select_prints_ids = request.POST.getlist('selected_print_ids', [])
-    else:
-        select_prints_ids = [pk]
-
-    get_prints(request).filter(id__in=select_prints_ids).delete()
-    messages.success(request, '{} time-lapses deleted.'.format(len(select_prints_ids)))
-
-    return redirect(reverse('prints'))
 
 
 @login_required
@@ -307,7 +282,6 @@ def upload_gcode_file(request):
 ### Misc ####
 
 # Was surprised to find there is no built-in way in django to serve uploaded files in both debug and production mode
-
 
 def serve_jpg_file(request, file_path):
     full_path = os.path.join(settings.MEDIA_ROOT, file_path)

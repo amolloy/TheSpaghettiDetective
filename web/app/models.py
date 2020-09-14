@@ -91,6 +91,8 @@ class User(AbstractUser):
     print_notification_by_pushbullet = models.BooleanField(null=False, blank=False, default=True)
     print_notification_by_telegram = models.BooleanField(null=False, blank=False, default=True)
     alert_by_sms = models.BooleanField(null=False, blank=False, default=True)
+    discord_webhook = models.CharField(max_length=256, null=True, blank=True)
+    print_notification_by_discord = models.BooleanField(null=False, blank=False, default=True)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
@@ -475,10 +477,6 @@ class Print(SafeDeleteModel):
     def ended_at(self):
         return self.cancelled_at or self.finished_at
 
-    # TODO: remove me after print page switches to Vue
-    def end_status(self):
-        return '(Cancelled)' if self.cancelled_at else ''
-
     def duration(self):
         return self.ended_at() - self.started_at
 
@@ -568,6 +566,7 @@ class PrintShotFeedback(models.Model):
 
     answer = models.CharField(max_length=16, choices=ANSWER_CHOICES, blank=True, null=True, db_index=True)
     answered_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    persisted_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

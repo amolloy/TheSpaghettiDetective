@@ -189,6 +189,11 @@ STATICFILES_DIRS = [
 SITE_ID = 1
 SITE_USES_HTTPS = os.environ.get('SITE_USES_HTTPS') == 'True'
 
+# Google recaptcha V3
+
+RECAPTCHA_SITE_KEY = os.environ.get('RECAPTCHA_SITE_KEY')
+RECAPTCHA_SECRET_KEY = os.environ.get('RECAPTCHA_SECRET_KEY')
+
 # Allauth
 
 AUTHENTICATION_BACKENDS = (
@@ -213,10 +218,15 @@ ACCOUNT_ALLOW_SIGN_UP = os.environ.get('ACCOUNT_ALLOW_SIGN_UP') == 'True'
 
 AUTH_USER_MODEL = 'app.User'
 
+if RECAPTCHA_SITE_KEY:
+    ACCOUNT_FORMS = {'signup': 'app.forms.RecaptchaSignupForm'}
+
 # Layout
 TEMPLATE_LAYOUT = "layout.html"
 
 # Sentry
+
+SENTRY_DSN = os.environ.get('SENTRY_DSN')
 if os.environ.get('SENTRY_DSN'):
     INSTALLED_APPS = INSTALLED_APPS + [
         'raven.contrib.django.raven_compat',
@@ -261,6 +271,7 @@ TWILIO_ENABLED = TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 
 SLACK_CLIENT_ID = None
+EXT_3D_GEEKS_ENDPOINT = None
 
 # settings export
 SETTINGS_EXPORT = [
@@ -269,6 +280,9 @@ SETTINGS_EXPORT = [
     'ACCOUNT_ALLOW_SIGN_UP',
     'SLACK_CLIENT_ID',
     'SITE_USES_HTTPS',
+    'EXT_3D_GEEKS_ENDPOINT',
+    'RECAPTCHA_SITE_KEY',
+    'SENTRY_DSN',
 ]
 
 # Celery
@@ -281,6 +295,8 @@ CHANNEL_LAYERS = {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
             "hosts": [REDIS_URL],
+            'capacity': 1500,
+            'expiry': 60,
         },
     },
 }
@@ -318,5 +334,3 @@ PRINT_EVENT_HANDLER = 'app.tasks.process_print_events'
 
 # Secure redirects
 SECURE_REDIRECTS = {}
-
-EXT_3D_GEEKS_ENDPOINT = 'https://qx8eve27wk.execute-api.eu-west-2.amazonaws.com/prod/tsd_push'

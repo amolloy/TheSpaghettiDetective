@@ -10,6 +10,9 @@ let openModalWithComponent = (C, props, modalOptions) => {
 
   return Vue.swal({
     ...modalOptions,
+    customClass: {
+      container: 'dark-backdrop',
+    },
     html: '<div id="replace-here">Placeholder</div>',
     onBeforeOpen: (el) => {
       el.querySelector('#replace-here').replaceWith(c.$el)
@@ -25,6 +28,9 @@ let openModalWithComponent = (C, props, modalOptions) => {
 let openModalWithElement = (element, props, modalOptions) => {
   return Vue.swal({
     ...modalOptions,
+    customClass: {
+      container: 'dark-backdrop',
+    },
     html: '<div id="replace-here">Placeholder</div>',
     onBeforeOpen: (el) => {
       el.querySelector('#replace-here').replaceWith(element)
@@ -32,11 +38,43 @@ let openModalWithElement = (element, props, modalOptions) => {
   })
 }
 
+let toast = (options) => {
+  return Vue.swal.fire({
+    ...options,
+    toast: true,
+    backdrop: false,
+    position: 'top-end',
+    showConfirmButton: false,
+    timer: 5000,
+  })
+}
+
 
 const install = (Vue, options) => {
   Vue.use(VueSwal, options)
+
+  const Confirm = Vue.swal.mixin({
+    title: 'Are you sure?',
+    showCancelButton: true,
+    confirmButtonText: 'Yes',
+    cancelButtonText: 'No',
+    customClass: {
+      container: 'dark-backdrop',
+    },
+  })
+
+  const Toast = Vue.swal.mixin({
+    toast: true,
+    position: 'top-end',
+    showConfirmButton: false,
+    timer: 5000,
+  })
+
   Vue.prototype.$swal['openModalWithComponent'] = openModalWithComponent
   Vue.prototype.$swal['openModalWithElement'] = openModalWithElement
+  Vue.prototype.$swal['toast'] = toast
+  Vue.prototype.$swal['Confirm'] = Confirm
+  Vue.prototype.$swal['Toast'] = Toast // FIXME Toast vs toast: caused by parallel development
 }
 
 export default {install: install}

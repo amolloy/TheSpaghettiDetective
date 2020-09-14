@@ -1,7 +1,24 @@
 from django.conf import settings
 import redis
+import bson
 
-REDIS = redis.Redis.from_url(settings.REDIS_URL, charset="utf-8", decode_responses=True)
+REDIS = redis.Redis.from_url(
+    settings.REDIS_URL, charset="utf-8", decode_responses=True)
+
+# for binary messages, decoding must be omitted
+BREDIS = redis.Redis.from_url(settings.REDIS_URL, decode_responses=False)
+
+# redis key prefix
+TUNNEL_PREFIX = "octoprinttunnel"
+
+# max wait time for response from plugin
+TUNNEL_RSP_TIMEOUT_SECS = 60
+
+# drop unconsumed response from redis after this seconds
+TUNNEL_RSP_EXPIRE_SECS = 60
+
+# sent/received stats expiration
+TUNNEL_STATS_EXPIRE_SECS = 3600 * 24 * 30 * 6
 
 
 def printer_key_prefix(printer_id):
@@ -68,7 +85,8 @@ def print_num_predictions_incr(print_id):
     key = f'{print_key_prefix(print_id)}:pred'
     with REDIS.pipeline() as pipe:
         pipe.incr(key)
-        pipe.expire(key, 60*60*24*30)     # Assuming it'll be processed in 30 days.
+        # Assuming it'll be processed in 30 days.
+        pipe.expire(key, 60*60*24*30)
         pipe.execute()
 
 
@@ -88,7 +106,8 @@ def print_high_prediction_add(print_id, prediction, timestamp, maxsize=180):
     with REDIS.pipeline() as pipe:
         pipe.zadd(key, {timestamp: prediction})
         pipe.zremrangebyrank(key, 0, (-1*maxsize+1))
-        pipe.expire(key, 60*60*24*3)     # Assuming it'll be processed in 3 days.
+        # Assuming it'll be processed in 3 days.
+        pipe.expire(key, 60*60*24*3)
         pipe.execute()
 
 
@@ -106,3 +125,66 @@ def print_progress_get(print_id):
     key = f'{print_key_prefix(print_id)}:pct'
     return int(REDIS.get(key) or 0)
 
+
+def octoprinttunnel_stats_key(date):
+    dt = date.strftime('%Y%m')
+    return f'{TUNNEL_PREFIX}.stats.{dt}'
+
+
+def octoprinttunnel_update_sent_stats(date, user_id, printer_id, transport, delta):
+    key = octoprinttunnel_stats_key(date)
+    with BREDIS.pipeline() as pipe:
+        pipe.hincrby(key, f'{user_id}.{printer_id}.sent.{transport}', delta)
+        pipe.hincrby(key, f'{user_id}.{printer_id}.sent', delta)
+        pipe.hincrby(key, f'{user_id}.{printer_id}.total', delta)
+        pipe.hincrby(key, f'{user_id}.sent.{transport}', delta)
+        pipe.hincrby(key, f'{user_id}.sent', delta)
+        pipe.hincrby(key, f'{user_id}.total', delta)
+        pipe.hincrby(key, f'sent.{transport}', delta)
+        pipe.hincrby(key, 'sent', delta)
+        pipe.hincrby(key, f'total.{transport}', delta)
+        pipe.hincrby(key, 'total', delta)
+        pipe.expire(key, TUNNEL_STATS_EXPIRE_SECS)
+        pipe.execute()
+
+
+def octoprinttunnel_update_received_stats(date, user_id, printer_id, transport, delta):
+    key = octoprinttunnel_stats_key(date)
+    with BREDIS.pipeline() as pipe:
+        pipe.hincrby(key, f'{user_id}.{printer_id}.received.{transport}', delta)
+        pipe.hincrby(key, f'{user_id}.{printer_id}.received', delta)
+        pipe.hincrby(key, f'{user_id}.{printer_id}.total', delta)
+        pipe.hincrby(key, f'{user_id}.received.{transport}', delta)
+        pipe.hincrby(key, f'{user_id}.received', delta)
+        pipe.hincrby(key, f'{user_id}.total', delta)
+        pipe.hincrby(key, f'received.{transport}', delta)
+        pipe.hincrby(key, 'received', delta)
+        pipe.hincrby(key, f'total.{transport}', delta)
+        pipe.hincrby(key, 'total', delta)
+        pipe.expire(key, TUNNEL_STATS_EXPIRE_SECS)
+        pipe.execute()
+
+
+def octoprinttunnel_get_stats(date):
+    key = octoprinttunnel_stats_key(date)
+    return BREDIS.hgetall(key)
+
+
+def octoprinttunnel_http_response_set(ref, data,
+                                      expire_secs=TUNNEL_RSP_EXPIRE_SECS):
+    key = f"{TUNNEL_PREFIX}.{ref}"
+    with BREDIS.pipeline() as pipe:
+        pipe.lpush(key, bson.dumps(data))
+        pipe.expire(key, expire_secs)
+        pipe.execute()
+
+
+def octoprinttunnel_http_response_get(ref, timeout_secs=TUNNEL_RSP_TIMEOUT_SECS):
+    # no way to delete key in after blpop in a pipeline as
+    # blpop does not block in that case..
+    key = f"{TUNNEL_PREFIX}.{ref}"
+    ret = BREDIS.blpop(key, timeout=timeout_secs)
+    if ret is not None and ret[1] is not None:
+        BREDIS.delete(key)
+        return bson.loads(ret[1])
+    return None

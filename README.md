@@ -81,6 +81,8 @@ sake, this document assumes the server port is 3334.
 
 ![Site configuration](https://raw.githubusercontent.com/TheSpaghettiDetective/TheSpaghettiDetective/master/docs/site_config.png)
 
+*Note: If you are using reverse proxy, "Domain name" needs to be set to `reverse_proxy_ip:reverse_proxy_port`. See [using a reverse proxy](docs/advanced_config.md#using-a-reverse-proxy) for details.*
+
 ## Configure Email server (SMTP)
 
 The following is using gmail as an example. Other web mail services may vary slightly, such as EMAIL_PORT
@@ -97,6 +99,8 @@ The following is using gmail as an example. Other web mail services may vary sli
       EMAIL_USE_TLS: 'True'
 ```
 
+If you run into issues with Email server settings, please follow this [Email server trouble-shooting guide](docs/email_guide.md).
+
 # Done!
 
 That's it! You now have a fully-functional The Spaghetti Detective server that your OctoPrint can talk to. We hope setting up the server has not been overwhelming.
@@ -105,15 +109,15 @@ That's it! You now have a fully-functional The Spaghetti Detective server that y
 
 Before you can configure The Spaghetti Detective OctoPrint Plugin to use your own server, you need add a printer to The Spaghetti Detective server you just built and obtain the secret token for that. To do so:
 
-1. Pointing your browser to `http://your_server_ip:3334/`.
+1. Pointing your browser to `http://your_server_ip:3334`.
 
-1. Log in as a user (you can just login with `root@example.com` but it's more secure to use a non-admin user). Add a new printer as described in [this guide](https://www.thespaghettidetective.com/docs/octoprint-setup.html#step-1-sign-up-the-spaghetti-detective-beta-account) and obtain the secret token.
+1. Log in as a user (you can just login with `root@example.com` but it's more secure to use a non-admin user). Add a new printer as described in [this guide](https://www.thespaghettidetective.com/docs/octoprint-plugin-setup/#step-1-sign-up-the-spaghetti-detective-account) and obtain the secret token.
 
 Then, on The Spaghetti Detective plugin settings page:
 
 1. Check the box "I have my own TSD server. Don't check this unless you know what you are doing."
 
-2. Enter `http://your_server_ip:3334/`. This time you need to enter both "http://" and the trailing "/". I know it's confusing but...
+2. Enter `http://your_server_ip:3334`.
 
 3. Enter the secret token you copied from the previous step.
 
